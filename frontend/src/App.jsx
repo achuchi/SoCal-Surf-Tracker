@@ -1,35 +1,21 @@
-import { useState } from 'react'
-import reactLogo from './assets/react.svg'
-import viteLogo from '/vite.svg'
-import './App.css'
+import React from 'react'
 
 function App() {
-  const [count, setCount] = useState(0)
+  // Try multiple ways to check environment variables
+  console.log("Starting app...")
+  console.log("Test value:", import.meta.env.VITE_TEST)
+  console.log("All env:", import.meta.env)
 
   return (
-    <>
-      <div>
-        <a href="https://vite.dev" target="_blank">
-          <img src={viteLogo} className="logo" alt="Vite logo" />
-        </a>
-        <a href="https://react.dev" target="_blank">
-          <img src={reactLogo} className="logo react" alt="React logo" />
-        </a>
+    <div>
+      <h1>Environment Test</h1>
+      <div style={{padding: '20px', background: '#f0f0f0', margin: '20px'}}>
+        <p>VITE_TEST value: {import.meta.env.VITE_TEST || 'Not found'}</p>
+        <p>MAPBOX token exists: {import.meta.env.VITE_MAPBOX_TOKEN ? 'Yes' : 'No'}</p>
       </div>
-      <h1>Vite + React</h1>
-      <div className="card">
-        <button onClick={() => setCount((count) => count + 1)}>
-          count is {count}
-        </button>
-        <p>
-          Edit <code>src/App.jsx</code> and save to test HMR
-        </p>
-      </div>
-      <p className="read-the-docs">
-        Click on the Vite and React logos to learn more
-      </p>
-    </>
-  )
+    </div>
+  );
 }
 
 export default App
+
