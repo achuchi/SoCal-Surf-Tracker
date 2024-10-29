@@ -1,0 +1,30 @@
+# Python stuff to ignore
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+env/
+venv/
+.env
+
+# Node stuff to ignore
+node_modules/
+npm-debug.log
+dist/
+build/
+
+# IDE stuff to ignore
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS stuff to ignore
+.DS_Store
+Thumbs.db
+
+# Environment variables
+.env
+*/.env
+frontend/.env
