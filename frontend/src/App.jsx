@@ -39,11 +39,26 @@ const App = () => {
 
   const fetchBuoyData = async (buoyId) => {
     try {
-      const response = await fetch(`http://localhost:8000/buoy/${buoyId}`);
+      // Convert buoyId to match backend format
+      const locationMap = {
+        'scripps': 'Scripps',
+        'torrey-pines': 'Torrey_Pines',
+        'del-mar': 'Del_Mar',
+        'imperial-beach': 'Imperial_Beach'
+      };
+      
+      const backendLocation = locationMap[buoyId];
+      const response = await fetch(`http://localhost:8000/api/buoys/${backendLocation}`);
       const data = await response.json();
+      
+      // Convert the data structure to match what the frontend expects
       setBuoyData(prev => ({
         ...prev,
-        [buoyId]: data
+        [buoyId]: {
+          waveHeight: data.current.wave_height,
+          wavePeriod: data.current.wave_period,
+          waterTemp: data.current.water_temp
+        }
       }));
     } catch (error) {
       console.error('Error fetching buoy data:', error);
