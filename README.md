@@ -1,6 +1,6 @@
 # SoCal Surf Conditions Tracker
 
-A full-stack web application that provides real-time surf conditions across Southern California beaches using NOAA buoy data. The application features an interactive map interface with live wave height, period, and temperature data from multiple monitoring stations.
+A full-stack web application that provides real-time surf conditions across Southern California beaches using public NOAA buoy data. The application features an interactive map interface with live wave height, period, and temperature data from multiple monitoring stations.
 
 ## Features
 - Real-time wave data fetching from NOAA buoy stations
