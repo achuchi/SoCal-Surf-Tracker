@@ -36,10 +36,14 @@ const BUOY_LOCATIONS = [
 const App = () => {
   const [selectedBuoy, setSelectedBuoy] = useState(null);
   const [buoyData, setBuoyData] = useState({});
+  const [isLoading, setIsLoading] = useState({});
+  const [errors, setErrors] = useState({});
 
   const fetchBuoyData = async (buoyId) => {
+    setIsLoading(prev => ({ ...prev, [buoyId]: true }));
+    setErrors(prev => ({ ...prev, [buoyId]: null }));
+
     try {
-      // Convert buoyId to match backend format
       const locationMap = {
         'scripps': 'Scripps',
         'torrey-pines': 'Torrey_Pines',
@@ -49,9 +53,13 @@ const App = () => {
       
       const backendLocation = locationMap[buoyId];
       const response = await fetch(`http://localhost:8000/api/buoys/${backendLocation}`);
+      
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+      
       const data = await response.json();
       
-      // Convert the data structure to match what the frontend expects
       setBuoyData(prev => ({
         ...prev,
         [buoyId]: {
@@ -62,12 +70,17 @@ const App = () => {
       }));
     } catch (error) {
       console.error('Error fetching buoy data:', error);
+      setErrors(prev => ({
+        ...prev,
+        [buoyId]: 'Failed to load buoy data'
+      }));
+    } finally {
+      setIsLoading(prev => ({ ...prev, [buoyId]: false }));
     }
   };
 
   return (
     <div className="w-screen h-screen relative">
-      {/* Header */}
       <div className="absolute top-4 left-4 z-10 bg-white/90 rounded-lg shadow-lg p-4">
         <h1 className="text-2xl font-bold text-gray-800">
           San Diego Surf Report
@@ -117,7 +130,23 @@ const App = () => {
               <h3 className="font-bold text-lg mb-2 text-gray-800">
                 {selectedBuoy.name}
               </h3>
-              {buoyData[selectedBuoy.id] ? (
+              
+              {isLoading[selectedBuoy.id] ? (
+                <div className="flex items-center justify-center p-4 space-x-2">
+                  <div className="animate-spin h-5 w-5 border-2 border-blue-500 rounded-full border-t-transparent"></div>
+                  <span className="text-gray-500">Loading data...</span>
+                </div>
+              ) : errors[selectedBuoy.id] ? (
+                <div className="p-4 bg-red-50 rounded-lg">
+                  <p className="text-red-500 text-sm">{errors[selectedBuoy.id]}</p>
+                  <button 
+                    onClick={() => fetchBuoyData(selectedBuoy.id)}
+                    className="mt-2 text-sm text-blue-500 hover:text-blue-600"
+                  >
+                    Try again
+                  </button>
+                </div>
+              ) : buoyData[selectedBuoy.id] ? (
                 <div className="space-y-2">
                   <p className="text-gray-700">
                     Wave Height: {buoyData[selectedBuoy.id].waveHeight}ft
@@ -130,9 +159,7 @@ const App = () => {
                   </p>
                 </div>
               ) : (
-                <p className="text-gray-500 italic">
-                  Loading buoy data...
-                </p>
+                <p className="text-gray-500 italic">No data available</p>
               )}
             </div>
           </Popup>
