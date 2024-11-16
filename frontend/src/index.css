@@ -1,3 +1,10 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+.mapboxgl-popup-content {
+    padding: 0 !important;  /* Remove default padding */
+    width: 350px !important;  /* Set fixed width */
+    overflow: hidden !important;  /* Ensure content doesn't spill */
+    border-radius: 8px !important;  /* Match your rounded corners */
+  }
