@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import Map, { Marker, Popup } from 'react-map-gl';
 import 'mapbox-gl/dist/mapbox-gl.css';
 
@@ -38,6 +38,8 @@ const App = () => {
   const [buoyData, setBuoyData] = useState({});
   const [isLoading, setIsLoading] = useState({});
   const [errors, setErrors] = useState({});
+  const [lastUpdated, setLastUpdated] = useState({});
+  const [countdown, setCountdown] = useState(300);
 
   const fetchBuoyData = async (buoyId) => {
     setIsLoading(prev => ({ ...prev, [buoyId]: true }));
@@ -68,6 +70,12 @@ const App = () => {
           waterTemp: data.current.water_temp
         }
       }));
+      
+      setLastUpdated(prev => ({
+        ...prev,
+        [buoyId]: new Date().toLocaleTimeString()
+      }));
+
     } catch (error) {
       console.error('Error fetching buoy data:', error);
       setErrors(prev => ({
@@ -78,6 +86,29 @@ const App = () => {
       setIsLoading(prev => ({ ...prev, [buoyId]: false }));
     }
   };
+
+  // Auto-refresh effect
+  useEffect(() => {
+    if (selectedBuoy) {
+      fetchBuoyData(selectedBuoy.id);
+      const intervalId = setInterval(() => {
+        fetchBuoyData(selectedBuoy.id);
+      }, 5 * 60 * 1000);
+
+      return () => clearInterval(intervalId);
+    }
+  }, [selectedBuoy]);
+
+  // Countdown effect
+  useEffect(() => {
+    if (selectedBuoy) {
+      const countdownInterval = setInterval(() => {
+        setCountdown(prev => prev > 0 ? prev - 1 : 300);
+      }, 1000);
+
+      return () => clearInterval(countdownInterval);
+    }
+  }, [selectedBuoy, lastUpdated]);
 
   return (
     <div className="w-screen h-screen relative">
@@ -105,6 +136,7 @@ const App = () => {
             onClick={e => {
               e.originalEvent.stopPropagation();
               setSelectedBuoy(buoy);
+              setCountdown(300); // Reset countdown on new selection
               fetchBuoyData(buoy.id);
             }}
           >
@@ -147,17 +179,32 @@ const App = () => {
                   </button>
                 </div>
               ) : buoyData[selectedBuoy.id] ? (
-                <div className="space-y-2">
-                  <p className="text-gray-700">
-                    Wave Height: {buoyData[selectedBuoy.id].waveHeight}ft
-                  </p>
-                  <p className="text-gray-700">
-                    Wave Period: {buoyData[selectedBuoy.id].wavePeriod}s
-                  </p>
-                  <p className="text-gray-700">
-                    Water Temp: {buoyData[selectedBuoy.id].waterTemp}°F
-                  </p>
-                </div>
+                <>
+                  <div className="space-y-2">
+                    <p className="text-gray-700">
+                      Wave Height: {buoyData[selectedBuoy.id].waveHeight}ft
+                    </p>
+                    <p className="text-gray-700">
+                      Wave Period: {buoyData[selectedBuoy.id].wavePeriod}s
+                    </p>
+                    <p className="text-gray-700">
+                      Water Temp: {buoyData[selectedBuoy.id].waterTemp}°F
+                    </p>
+                  </div>
+                  <div className="mt-4 text-xs text-gray-500">
+                    <p>Last updated: {lastUpdated[selectedBuoy.id]}</p>
+                    <p>Next update in: {Math.floor(countdown / 60)}:{(countdown % 60).toString().padStart(2, '0')}</p>
+                    <button 
+                      onClick={() => {
+                        fetchBuoyData(selectedBuoy.id);
+                        setCountdown(300);
+                      }}
+                      className="mt-1 text-blue-500 hover:text-blue-600"
+                    >
+                      Refresh now
+                    </button>
+                  </div>
+                </>
               ) : (
                 <p className="text-gray-500 italic">No data available</p>
               )}
