@@ -2,9 +2,68 @@
 @tailwind components;
 @tailwind utilities;
 
+/* Override Mapbox popup styles */
+.mapboxgl-popup {
+  max-width: none !important;
+}
+
 .mapboxgl-popup-content {
-    padding: 0 !important;  /* Remove default padding */
-    width: 350px !important;  /* Set fixed width */
-    overflow: hidden !important;  /* Ensure content doesn't spill */
-    border-radius: 8px !important;  /* Match your rounded corners */
-  }
+  padding: 0 !important;
+  width: 450px !important; /* Increased from 350px to accommodate trends */
+  max-width: 95vw !important;
+  overflow: visible !important;
+  border-radius: 8px !important;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15) !important;
+}
+
+/* Style the close button */
+.mapboxgl-popup-close-button {
+  padding: 4px 8px !important;
+  right: 4px !important;
+  top: 4px !important;
+  color: #64748b !important;
+  font-size: 20px !important;
+  z-index: 10 !important;
+}
+
+.mapboxgl-popup-close-button:hover {
+  background: none !important;
+  color: #0f172a !important;
+}
+
+/* Fix popup tip appearance */
+.mapboxgl-popup-tip {
+  border-top-color: white !important;
+  border-bottom-color: white !important;
+}
+
+/* Add smooth scrolling for popup content if needed */
+.mapboxgl-popup-content > div {
+  max-height: calc(80vh - 40px);
+  overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: #CBD5E1 transparent;
+}
+
+/* Custom scrollbar styling */
+.mapboxgl-popup-content > div::-webkit-scrollbar {
+  width: 4px;
+}
+
+.mapboxgl-popup-content > div::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.mapboxgl-popup-content > div::-webkit-scrollbar-thumb {
+  background-color: #CBD5E1;
+  border-radius: 2px;
+}
+
+/* Ensure popup maintains position */
+.mapboxgl-popup-anchor-top .mapboxgl-popup-content,
+.mapboxgl-popup-anchor-bottom .mapboxgl-popup-content,
+.mapboxgl-popup-anchor-center .mapboxgl-popup-content,
+.mapboxgl-popup-anchor-left .mapboxgl-popup-content,
+.mapboxgl-popup-anchor-right .mapboxgl-popup-content {
+  transform: none !important;
+}
