@@ -1,8 +1,8 @@
 import React from 'react';
 import { Card, CardHeader, CardTitle, CardContent } from './ui/card';
 import { 
-  LineChart, 
-  Line, 
+  BarChart, 
+  Bar, 
   XAxis, 
   YAxis, 
   CartesianGrid, 
@@ -12,24 +12,22 @@ import {
 } from 'recharts';
 import { TrendingUp, TrendingDown, Minus } from 'lucide-react';
 
-const WaveTrendsChart = ({ data }) => {
-  // Early return with loading state if no data
+const TempTrendsChart = ({ data }) => {
   if (!data) {
     return (
       <Card className="w-full">
         <CardContent className="flex items-center justify-center h-48">
-          <div className="text-slate-500">Loading trend data...</div>
+          <div className="text-slate-500">Loading temperature data...</div>
         </CardContent>
       </Card>
     );
   }
 
-  // Early return with error state if invalid data structure
   if (!data.timeSeries || !data.timeSeries.dataPoints) {
     return (
       <Card className="w-full">
         <CardContent className="flex items-center justify-center h-48">
-          <div className="text-red-500">No trend data available</div>
+          <div className="text-red-500">No temperature data available</div>
         </CardContent>
       </Card>
     );
@@ -38,6 +36,20 @@ const WaveTrendsChart = ({ data }) => {
   const { timeSeries, current } = data;
   const { statistics, trend, dataPoints } = timeSeries;
 
+  const TrendIcon = trend.trendDirection === 'increasing' 
+  ? TrendingUp 
+  : trend.trendDirection === 'decreasing' 
+    ? TrendingDown 
+    : Minus;
+
+  const getTemperatureColor = (temp) => {
+    const minTemp = 13;
+    const maxTemp = 16;
+    const normalizedTemp = (temp - minTemp) / (maxTemp - minTemp);
+    const hue = 240 - (normalizedTemp * 200); // 240 (blue) to 40 (orange)
+    return `hsl(${hue}, 70%, 50%)`;
+  };
+
   const formattedData = dataPoints
     .map(point => {
       const pointTime = new Date(point.timestamp);
@@ -45,24 +57,22 @@ const WaveTrendsChart = ({ data }) => {
       
       return {
         ...point,
-        time: `${hoursAgo}h ago`,
-        rawTime: pointTime,
-        value: Number(point.value)
+        time: `${pointTime.toLocaleTimeString([], { 
+          hour: '2-digit', 
+          minute: '2-digit' 
+        })}`,
+        hoursAgo: hoursAgo,
+        value: Number(point.value),
+        fill: getTemperatureColor(point.value)
       };
     })
-    .sort((a, b) => a.rawTime - b.rawTime);
-
-  const TrendIcon = trend.trendDirection === 'increasing' 
-    ? TrendingUp 
-    : trend.trendDirection === 'decreasing' 
-      ? TrendingDown 
-      : Minus;
+    .sort((a, b) => a.hoursAgo - b.hoursAgo);
 
   return (
     <Card className="w-full">
       <CardHeader className="space-y-0 pb-2">
         <div className="flex items-center justify-between">
-          <CardTitle className="text-base">Wave Height Trends</CardTitle>
+          <CardTitle className="text-base">Water Temperature History</CardTitle>
           <div className="flex items-center gap-2">
             <TrendIcon 
               className={`w-4 h-4 ${
@@ -80,44 +90,43 @@ const WaveTrendsChart = ({ data }) => {
         </div>
       </CardHeader>
       <CardContent className="space-y-4">
+        {/* Stats Summary */}
         <div className="grid grid-cols-3 gap-2">
           <div className="bg-sky-50 p-2 rounded-lg">
             <div className="text-xs text-sky-600">Average</div>
-            <div className="text-base font-bold text-sky-700">{statistics.average.toFixed(1)}ft</div>
+            <div className="text-base font-bold text-sky-700">{statistics.average.toFixed(1)}°F</div>
           </div>
           <div className="bg-sky-50 p-2 rounded-lg">
             <div className="text-xs text-sky-600">Min</div>
-            <div className="text-base font-bold text-sky-700">{statistics.minimum.toFixed(1)}ft</div>
+            <div className="text-base font-bold text-sky-700">{statistics.minimum.toFixed(1)}°F</div>
           </div>
           <div className="bg-sky-50 p-2 rounded-lg">
             <div className="text-xs text-sky-600">Max</div>
-            <div className="text-base font-bold text-sky-700">{statistics.maximum.toFixed(1)}ft</div>
+            <div className="text-base font-bold text-sky-700">{statistics.maximum.toFixed(1)}°F</div>
           </div>
         </div>
 
+        {/* Chart */}
         <div className="h-64">
           <ResponsiveContainer width="100%" height="100%">
-            <LineChart 
+            <BarChart 
               data={formattedData}
               margin={{ top: 10, right: 30, left: 10, bottom: 30 }}
             >
               <CartesianGrid strokeDasharray="3 3" className="stroke-gray-200" />
               <XAxis 
-                dataKey="time" 
+                dataKey="time"
                 className="text-xs"
                 height={30}
-                angle={0}
+                angle={-45}
+                textAnchor="end"
                 interval="preserveEnd"
-                minTickGap={40}
+                minTickGap={10}
               />
               <YAxis 
                 className="text-xs"
-                domain={[
-                  Math.floor(statistics.minimum * 0.8),
-                  Math.ceil(statistics.maximum * 1.2)
-                ]}
-                unit="ft"
-                width={40}
+                domain={[13, 16]}
+                unit="°F"
               />
               <Tooltip 
                 contentStyle={{ 
@@ -126,15 +135,7 @@ const WaveTrendsChart = ({ data }) => {
                   borderRadius: '8px',
                   boxShadow: '0 2px 4px rgba(0,0,0,0.1)'
                 }}
-                labelStyle={{ color: '#666' }}
-                formatter={(value, name) => [`${value}ft`, 'Wave Height']}
-                labelFormatter={(label) => {
-                  const point = formattedData.find(p => p.time === label);
-                  return point ? new Date(point.rawTime).toLocaleTimeString([], { 
-                    hour: '2-digit', 
-                    minute: '2-digit'
-                  }) : label;
-                }}
+                formatter={(value) => [`${value.toFixed(1)}°F`, 'Temperature']}
               />
               <ReferenceLine 
                 y={statistics.average} 
@@ -146,19 +147,16 @@ const WaveTrendsChart = ({ data }) => {
                   className: 'text-xs fill-gray-500' 
                 }}
               />
-              <Line
-                type="monotone"
+              <Bar 
                 dataKey="value"
-                stroke="#0ea5e9"
-                strokeWidth={2}
-                dot={false}
-                activeDot={{ r: 4 }}
+                radius={[4, 4, 0, 0]}
               />
-            </LineChart>
+            </BarChart>
           </ResponsiveContainer>
         </div>
 
-        <div className="text-xs text-gray-500 text-center mt-2">
+        {/* Confidence Score */}
+        <div className="text-xs text-gray-500 text-center">
           Trend Confidence: {(trend.confidenceScore * 100).toFixed(0)}%
         </div>
       </CardContent>
@@ -166,4 +164,4 @@ const WaveTrendsChart = ({ data }) => {
   );
 };
 
-export default WaveTrendsChart;
+export default TempTrendsChart;

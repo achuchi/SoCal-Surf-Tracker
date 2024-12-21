@@ -86,6 +86,115 @@ class Query:
                 )
         
         return formatted_data
+    
+    @strawberry.field
+    def temp_trends(
+        self, 
+        location: str, 
+        interval: TimeInterval,
+        hours_back: Optional[int] = 24
+    ) -> Optional[WaveAnalysis]:
+        try:
+            processor = BuoyDataLord()
+            data = processor.fetch_all_buoys()
+            
+            location_map = {loc.lower(): loc for loc in data.keys()}
+            if location.lower() not in location_map:
+                return None
+                
+            actual_location = location_map[location.lower()]
+            df = data[actual_location]
+            
+            if df is None or df.empty:
+                return None
+
+            # Convert datetime and set as index
+            df['datetime'] = pd.to_datetime(df['datetime'])
+            current_time = datetime.now()
+
+            # Filter out future timestamps and set time range
+            df = df[
+                (df['datetime'] <= current_time) & 
+                (df['datetime'] >= current_time - timedelta(hours=hours_back))
+            ]
+
+            if df.empty:
+                return None
+
+            df = df.set_index('datetime')
+
+            # Use WTMP instead of WVHT for temperature
+            if 'WTMP' not in df.columns:
+                return None
+
+            # Resample data based on interval using WTMP column
+            resampled = df.resample(interval.value)['WTMP'].agg([
+                'mean', 'min', 'max', 'std'
+            ]).fillna(method='ffill')
+            
+            resampled = resampled.sort_index()
+
+            # Calculate trend
+            trend_direction = "stable"
+            change_pct = 0.0
+            confidence = 0.0
+
+            if len(resampled) > 1:
+                x = np.arange(len(resampled))
+                y = resampled['mean'].values
+                z = np.polyfit(x, y, 1)
+                slope = z[0]
+
+                if abs(slope) > 0.01:
+                    trend_direction = "increasing" if slope > 0 else "decreasing"
+                    
+                first_val = resampled['mean'].iloc[0]
+                last_val = resampled['mean'].iloc[-1]
+                if first_val != 0:
+                    change_pct = ((last_val - first_val) / first_val) * 100
+
+                correlation_matrix = np.corrcoef(x, y)
+                correlation_xy = correlation_matrix[0,1]
+                confidence = correlation_xy**2
+
+            data_points = [
+                TrendPoint(
+                    timestamp=index.isoformat(),
+                    value=float(row['mean'])
+                )
+                for index, row in resampled.iterrows()
+            ]
+
+            stats = Statistics(
+                minimum=float(resampled['min'].min()),
+                maximum=float(resampled['max'].max()),
+                average=float(resampled['mean'].mean()),
+                std_deviation=float(resampled['std'].mean()) if 'std' in resampled.columns else None
+            )
+
+            trend = TrendAnalysis(
+                trend_direction=trend_direction,
+                change_percentage=round(change_pct, 2),
+                confidence_score=round(confidence, 2)
+            )
+
+            time_series = TimeSeriesData(
+                interval=interval.value,
+                data_points=data_points,
+                statistics=stats,
+                trend=trend
+            )
+
+            current = BuoyMeasurement(**_format_measurement(df.iloc[-1]))
+
+            return WaveAnalysis(
+                current=current,
+                time_series=time_series
+            )
+
+        except Exception as e:
+            print(f"Error in temp_trends: {str(e)}")
+            return None
 
     @strawberry.field
     def wave_trends(
@@ -119,11 +228,19 @@ class Query:
             
             # Convert datetime and set as index
             df['datetime'] = pd.to_datetime(df['datetime'])
-            df = df.set_index('datetime')
+            current_time = datetime.now()
 
-            # Filter for requested time period
-            start_time = datetime.now() - timedelta(hours=hours_back)
-            df = df[df.index >= start_time]
+            # Filter out future timestamps and set time range
+            df = df[
+                (df['datetime'] <= current_time) & 
+                (df['datetime'] >= current_time - timedelta(hours=hours_back))
+            ]
+
+            if df.empty:
+                print("No data available after filtering timestamps")
+                return None
+
+            df = df.set_index('datetime')
             
             print(f"Filtered DataFrame shape: {df.shape}")
 
@@ -136,6 +253,9 @@ class Query:
             resampled = df.resample(interval.value)['WVHT'].agg([
                 'mean', 'min', 'max', 'std'
             ]).fillna(method='ffill')
+            
+            # Sort the index to ensure chronological order
+            resampled = resampled.sort_index()
             
             print(f"Resampled data shape: {resampled.shape}")
 
@@ -200,7 +320,7 @@ class Query:
                 trend=trend
             )
 
-            # Get current measurement using the modified _format_measurement
+            # Get current measurement
             current = BuoyMeasurement(**_format_measurement(df.iloc[-1]))
 
             print("Successfully created WaveAnalysis object")
@@ -239,6 +359,8 @@ class Query:
                 history=[BuoyMeasurement(**measurement) for measurement in history]
             )
         return None
+    
+
 
 # Helper function used by both REST and GraphQL endpoints
 def _format_measurement(data) -> dict:

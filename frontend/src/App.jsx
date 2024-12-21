@@ -3,6 +3,7 @@ import Map, { Marker, Popup } from 'react-map-gl';
 import 'mapbox-gl/dist/mapbox-gl.css';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "./components/ui/tabs";
 import WaveTrendsChart from './components/WaveTrendsChart';
+import TempTrendsChart from './components/TempTrendsChart';
 
 const BUOY_LOCATIONS = [
   {
@@ -64,6 +65,35 @@ const WAVE_TRENDS_QUERY = `
   }
 `;
 
+const TEMP_TRENDS_QUERY = `
+  query TempTrends($location: String!, $interval: TimeInterval!, $hoursBack: Int) {
+    tempTrends(location: $location, interval: $interval, hoursBack: $hoursBack) {
+      current {
+        waterTemp
+        timestamp
+      }
+      timeSeries {
+        interval
+        dataPoints {
+          timestamp
+          value
+        }
+        statistics {
+          minimum
+          maximum
+          average
+          stdDeviation
+        }
+        trend {
+          trendDirection
+          changePercentage
+          confidenceScore
+        }
+      }
+    }
+  }
+`;
+
 const App = () => {
   const [selectedBuoy, setSelectedBuoy] = useState(null);
   const [buoyData, setBuoyData] = useState({});
@@ -78,49 +108,90 @@ const App = () => {
     zoom: 10
   });
 
-  const fetchTrendData = async (buoyId) => {
-    try {
-      const locationMap = {
-        'scripps': 'Scripps',
-        'torrey-pines': 'Torrey_Pines',
-        'del-mar': 'Del_Mar',
-        'imperial-beach': 'Imperial_Beach'
-      };
-      
-      const response = await fetch('http://localhost:8000/graphql', {
+const [waveTrendData, setWaveTrendData] = useState({});
+const [tempTrendData, setTempTrendData] = useState({});
+
+// Fetch function:
+const fetchTrendData = async (location) => {
+  try {
+    console.log("Fetching trend data for:", location);
+    
+    // Convert location ID to the correct format for GraphQL
+    const locationMap = {
+      'scripps': 'Scripps',
+      'torrey-pines': 'Torrey_Pines',
+      'del-mar': 'Del_Mar',
+      'imperial-beach': 'Imperial_Beach'
+    };
+
+    const graphqlLocation = locationMap[location];
+    console.log("Using GraphQL location:", graphqlLocation);
+
+    const waveBody = {
+      query: WAVE_TRENDS_QUERY,
+      variables: {
+        location: graphqlLocation,
+        interval: "HOURLY",
+        hoursBack: 24
+      }
+    };
+
+    const tempBody = {
+      query: TEMP_TRENDS_QUERY,
+      variables: {
+        location: graphqlLocation,
+        interval: "HOURLY",
+        hoursBack: 24
+      }
+    };
+
+    console.log("Wave request body:", waveBody);
+    console.log("Temp request body:", tempBody);
+
+    const [waveResponse, tempResponse] = await Promise.all([
+      fetch('http://localhost:8000/graphql', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          query: WAVE_TRENDS_QUERY,
-          variables: {
-            location: locationMap[buoyId],
-            interval: "HOURLY",
-            hoursBack: 24
-          }
-        })
-      });
-      
-      const result = await response.json();
-      
-      // Add error checking for the GraphQL response
-      if (result.errors) {
-        console.error('GraphQL Errors:', result.errors);
-        return;
-      }
-  
-      // Only set the data if we have a valid response
-      if (result.data && result.data.waveTrends) {
-        setTrendData(prev => ({
-          ...prev,
-          [buoyId]: result.data.waveTrends
-        }));
-      }
-    } catch (error) {
-      console.error('Error fetching trend data:', error);
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(waveBody)
+      }),
+      fetch('http://localhost:8000/graphql', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(tempBody)
+      })
+    ]);
+
+    const [waveData, tempData] = await Promise.all([
+      waveResponse.json(),
+      tempResponse.json()
+    ]);
+
+    console.log("Full wave response:", JSON.stringify(waveData, null, 2));
+    console.log("Full temp response:", JSON.stringify(tempData, null, 2));
+
+    if (waveData?.data?.waveTrends) {
+      console.log("Setting wave trend data for:", location);
+      setWaveTrendData(prev => ({
+        ...prev,
+        [location]: waveData.data.waveTrends
+      }));
+    } else {
+      console.log("No wave trends data in response", waveData);
     }
-  };
+    
+    if (tempData?.data?.tempTrends) {
+      console.log("Setting temp trend data for:", location);
+      setTempTrendData(prev => ({
+        ...prev,
+        [location]: tempData.data.tempTrends
+      }));
+    } else {
+      console.log("No temp trends data in response", tempData);
+    }
+  } catch (error) {
+    console.error('Error fetching trend data:', error);
+  }
+};
 
   const fetchBuoyData = async (buoyId) => {
     setIsLoading(prev => ({ ...prev, [buoyId]: true }));
@@ -270,8 +341,9 @@ const App = () => {
               ) : (
                 <Tabs defaultValue="current" className="w-full">
                   <TabsList className="w-full mb-4">
-                    <TabsTrigger value="current" className="w-1/2">Current</TabsTrigger>
-                    <TabsTrigger value="trends" className="w-1/2">Trends</TabsTrigger>
+                    <TabsTrigger value="current" className="w-1/3">Current</TabsTrigger>
+                    <TabsTrigger value="wave-trends" className="w-1/3">Wave Trends</TabsTrigger>
+                    <TabsTrigger value="temp-trends" className="w-1/3">Temp Trends</TabsTrigger>
                   </TabsList>
 
                   <TabsContent value="current">
@@ -300,9 +372,20 @@ const App = () => {
                     </div>
                   </TabsContent>
 
-                  <TabsContent value="trends">
-                    {trendData[selectedBuoy.id] ? (
-                      <WaveTrendsChart data={trendData[selectedBuoy.id]} />
+                  <TabsContent value="wave-trends">
+                    {waveTrendData[selectedBuoy.id] ? (
+                      <WaveTrendsChart data={waveTrendData[selectedBuoy.id]} />
+                    ) : (
+                      <div className="flex items-center justify-center p-4">
+                        <div className="animate-spin h-5 w-5 border-2 border-sky-500 rounded-full border-t-transparent"></div>
+                        <span className="ml-2 text-slate-600">Loading trends...</span>
+                      </div>
+                    )}
+                  </TabsContent>
+
+                  <TabsContent value="temp-trends">
+                    {tempTrendData[selectedBuoy.id] ? (
+                      <TempTrendsChart data={tempTrendData[selectedBuoy.id]} />
                     ) : (
                       <div className="flex items-center justify-center p-4">
                         <div className="animate-spin h-5 w-5 border-2 border-sky-500 rounded-full border-t-transparent"></div>
