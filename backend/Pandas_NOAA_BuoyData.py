@@ -1,9 +1,10 @@
-
-
 import pandas as pd
+import numpy as np  
 import requests
 from datetime import datetime, timedelta
 import io
+import tensorflow as tf  
+from sklearn.preprocessing import MinMaxScaler
 
 class BuoyDataLord:
     def __init__(self):
@@ -160,3 +161,133 @@ if __name__ == "__main__":
                     print(f"No valid data for {location}")
             except Exception as e:
                 print(f"Error processing data for {location}: {str(e)}")
+
+
+class FocusedWavePredictor:
+    def __init__(self, sequence_length=24):
+        self.sequence_length = sequence_length
+        self.height_scaler = MinMaxScaler(feature_range=(0, 1))
+        self.temp_scaler = MinMaxScaler(feature_range=(0, 1))
+        self.height_model = self._build_model()
+        self.temp_model = self._build_model()
+        
+    def _build_model(self):
+        model = tf.keras.Sequential([
+            tf.keras.layers.LSTM(32, activation='relu', 
+                               input_shape=(self.sequence_length, 1), 
+                               return_sequences=True),
+            tf.keras.layers.Dropout(0.1),
+            tf.keras.layers.LSTM(16, activation='relu'),
+            tf.keras.layers.Dense(24)
+        ])
+        
+        model.compile(
+            optimizer=tf.keras.optimizers.Adam(learning_rate=0.001),
+            loss='mse',
+            metrics=['mae']
+        )
+        return model
+
+    def prepare_sequences(self, data, scaler, column):
+        """Prepare sequences for single feature prediction"""
+        scaled_data = scaler.fit_transform(data[[column]])
+        
+        X, y = [], []
+        for i in range(len(scaled_data) - self.sequence_length - 24):
+            X.append(scaled_data[i:(i + self.sequence_length)])
+            y.append(scaled_data[i + self.sequence_length:i + self.sequence_length + 24])
+            
+        return np.array(X), np.array(y)
+
+    def train(self, historical_data, epochs=30, batch_size=32):
+        """Train models for both wave height and temperature"""
+        # Prepare and train wave height model
+        X_height, y_height = self.prepare_sequences(historical_data, 
+                                                  self.height_scaler, 'WVHT')
+        height_history = self.height_model.fit(
+            X_height, y_height,
+            epochs=epochs,
+            batch_size=batch_size,
+            validation_split=0.2,
+            verbose=0
+        )
+        
+        # Prepare and train temperature model
+        X_temp, y_temp = self.prepare_sequences(historical_data, 
+                                              self.temp_scaler, 'WTMP')
+        temp_history = self.temp_model.fit(
+            X_temp, y_temp,
+            epochs=epochs,
+            batch_size=batch_size,
+            validation_split=0.2,
+            verbose=0
+        )
+        
+        return {
+            'height_accuracy': 1 - min(height_history.history['val_mae']),
+            'temp_accuracy': 1 - min(temp_history.history['val_mae'])
+        }
+
+    def predict(self, current_data):
+        """Generate predictions for both wave height and temperature"""
+        # Prepare recent sequences
+        recent_height = self.height_scaler.transform(
+            current_data[['WVHT']].tail(self.sequence_length)
+        )
+        recent_temp = self.temp_scaler.transform(
+            current_data[['WTMP']].tail(self.sequence_length)
+        )
+        
+        # Generate predictions
+        height_pred = self.height_model.predict(
+            recent_height.reshape(1, self.sequence_length, 1)
+        )
+        temp_pred = self.temp_model.predict(
+            recent_temp.reshape(1, self.sequence_length, 1)
+        )
+        
+        # Inverse transform predictions
+        height_pred = self.height_scaler.inverse_transform(height_pred)[0]
+        temp_pred = self.temp_scaler.inverse_transform(temp_pred)[0]
+        
+        # Calculate confidence scores
+        confidence = self._calculate_confidence(current_data)
+        
+        # Format predictions
+        current_time = current_data['datetime'].iloc[-1]
+        return {
+            'wave_height': [
+                {
+                    'timestamp': (current_time + timedelta(hours=i+1)).isoformat(),
+                    'value': float(height_pred[i]),
+                    'confidence': float(confidence[i])
+                }
+                for i in range(24)
+            ],
+            'temperature': [
+                {
+                    'timestamp': (current_time + timedelta(hours=i+1)).isoformat(),
+                    'value': float(temp_pred[i]),
+                    'confidence': float(confidence[i])
+                }
+                for i in range(24)
+            ]
+        }
+    
+    def _calculate_confidence(self, current_data):
+        """Calculate confidence scores that decay over the prediction horizon"""
+        # Base confidence on recent data stability
+        recent_height_std = current_data['WVHT'].tail(24).std()
+        recent_temp_std = current_data['WTMP'].tail(24).std()
+        
+        base_confidence = 1.0 - min(
+            (recent_height_std + recent_temp_std) / 
+            (current_data['WVHT'].mean() + current_data['WTMP'].mean()),
+            0.5
+        )
+        
+        # Apply time decay to confidence
+        time_decay = np.exp(-np.arange(24) / 24)
+        confidence_scores = base_confidence * time_decay
+        
+        return np.clip(confidence_scores, 0.3, 0.95)
